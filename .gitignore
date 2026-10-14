@@ -1,0 +1,25 @@
+# build output
+node_modules/
+dist/
+.vite/
+release*/
+*.ipk
+
+# local machine config + anything secret-ish
+config.env
+*.key
+*.pem
+.env
+.env.*
+!config.example.env
+
+# tool output / scratch
+tools/ares/
+tools/screenshots/
+tools/*.cpuprofile
+tools/traces/
+*.log
+.DS_Store
+
+# build scratch (cloned upstream sources)
+.build/

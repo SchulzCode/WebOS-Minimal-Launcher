@@ -1,0 +1,4 @@
+{
+    "name": "tld.my.minimalhome.service",
+    "main": "service.js"
+}

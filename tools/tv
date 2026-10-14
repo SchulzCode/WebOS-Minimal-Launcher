@@ -1,0 +1,7 @@
+#!/bin/sh
+# SSH to the TV as root, non-interactive. Settings: ../config.env (copy config.example.env) or the environment.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$HERE/../config.env" ] && . "$HERE/../config.env"
+: "${TV_IP:?set TV_IP in config.env}" "${TV_SSH_KEY:=$HOME/.ssh/id_rsa}"
+KH=""; [ -n "${TV_KNOWN_HOSTS:-}" ] && KH="-o UserKnownHostsFile=$TV_KNOWN_HOSTS"
+exec ssh -i "$TV_SSH_KEY" -o BatchMode=yes -o ConnectTimeout=8 -o LogLevel=ERROR $KH "root@$TV_IP" "$@"

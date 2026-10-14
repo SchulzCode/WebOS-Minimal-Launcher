@@ -1,0 +1,32 @@
+#!/bin/sh
+# Block LG ad / ACR / telemetry hosts and stop the log/crash uploaders.
+# Runs from /var/lib/webosbrew/init.d (after webosbrew's startup.sh has bind-mounted /etc/hosts).
+# Must stay fast and never fail hard: a hook that hangs trips webosbrew's failsafe flag.
+# UNDO: delete this file and /var/lib/webosbrew/telemetry-block/, then reboot.
+
+DIR=/var/lib/webosbrew/telemetry-block
+LIST="$DIR/hosts.txt"
+
+# --- hosts block (idempotent) ---
+if [ -f "$LIST" ] && ! grep -q '^# telemetry-block' /etc/hosts 2>/dev/null; then
+    # /etc/hosts is normally already a writable bind mount (webosbrew update-block);
+    # if it is not, make our own copy and bind it.
+    if ! { : >> /etc/hosts; } 2>/dev/null; then
+        cp /etc/hosts /tmp/hosts.telemetry-block && mount --bind /tmp/hosts.telemetry-block /etc/hosts
+    fi
+    { echo '# telemetry-block (see /var/lib/webosbrew/init.d/60-telemetry-block)'; cat "$LIST"; } >> /etc/hosts 2>/dev/null
+fi
+
+# --- stop uploaders (detached; services may still be starting when we run) ---
+(
+    i=0
+    while [ $i -lt 18 ]; do
+        for s in crashd uploadd remotelogger; do
+            systemctl is-active -q "$s" 2>/dev/null && systemctl stop "$s" >/dev/null 2>&1
+        done
+        i=$((i + 1))
+        sleep 10
+    done
+) </dev/null >/dev/null 2>&1 &
+
+exit 0

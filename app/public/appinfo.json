@@ -1,0 +1,18 @@
+{
+  "id": "tld.my.minimalhome",
+  "version": "0.4.0",
+  "vendor": "me",
+  "type": "web",
+  "main": "index.html",
+  "title": "Minimal Home",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#050505",
+  "bgColor": "#000000",
+  "uiRevision": 2,
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "appCategory": [
+    "home"
+  ]
+}

@@ -1,0 +1,209 @@
+/* Minimal Home — designed at 1920×1080 CSS px (the TV composites it at 4K, so we keep
+   everything on transform/opacity and give moving parts their own layers). */
+
+:root {
+	--bg: #07080c;
+	--text: #f3f5f9;
+	--muted: rgba(243, 245, 249, 0.62);
+	--faint: rgba(243, 245, 249, 0.38);
+	--surface: rgba(255, 255, 255, 0.06);
+	--surface-hi: rgba(255, 255, 255, 0.11);
+	--accent: #a99bff;
+	--pad: 96px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+
+body {
+	color: var(--text);
+	font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	user-select: none;
+}
+
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+
+/* --- atmosphere ------------------------------------------------------------ */
+.wash {
+	position: absolute; inset: 0;
+	background:
+		radial-gradient(1100px 700px at 12% -8%, rgba(120, 104, 255, 0.16), transparent 70%),
+		radial-gradient(900px 600px at 100% 100%, rgba(70, 120, 255, 0.07), transparent 70%);
+	will-change: transform;
+}
+
+.backdrop { position: absolute; top: 0; left: 0; width: 1920px; height: 780px; overflow: hidden; }
+.backdrop-layer { position: absolute; inset: 0; transition: opacity 520ms ease; will-change: opacity; }
+.backdrop-layer img { width: 100%; height: 100%; object-fit: cover; object-position: 60% 20%; display: block; }
+
+/* fades that melt the artwork into the page — static layers, painted once */
+.shade-left {
+	position: absolute; top: 0; left: 0; width: 1400px; height: 780px; will-change: transform;
+	background: linear-gradient(90deg, #07080c 0%, rgba(7, 8, 12, 0.95) 34%, rgba(7, 8, 12, 0.8) 54%, rgba(7, 8, 12, 0.3) 80%, rgba(7, 8, 12, 0) 100%);
+}
+.shade-top {
+	position: absolute; top: 0; left: 0; width: 1920px; height: 210px; will-change: transform;
+	background: linear-gradient(180deg, rgba(7, 8, 12, 0.72) 0%, rgba(7, 8, 12, 0.38) 55%, rgba(7, 8, 12, 0) 100%);
+}
+.shade-bottom {
+	position: absolute; top: 400px; left: 0; width: 1920px; height: 380px; will-change: transform;
+	background: linear-gradient(180deg, rgba(7, 8, 12, 0) 0%, rgba(7, 8, 12, 0.78) 62%, #07080c 100%);
+}
+
+/* --- top bar ----------------------------------------------------------------- */
+.top {
+	position: absolute; top: 52px; left: var(--pad); right: var(--pad);
+	display: flex; justify-content: space-between; align-items: flex-start;
+}
+.greeting { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+.date { margin-top: 6px; font-size: 21px; color: var(--muted); }
+.clock { text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6); font-size: 46px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* --- hero -------------------------------------------------------------------- */
+.hero {
+	position: absolute; left: var(--pad); bottom: 560px; width: 820px;
+	animation: rise 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes rise { from { opacity: 0; transform: translate3d(0, 14px, 0); } to { opacity: 1; transform: none; } }
+
+.pill {
+	display: inline-flex; align-items: center; gap: 10px;
+	padding: 8px 16px 8px 14px; border-radius: 999px;
+	background: rgba(255, 255, 255, 0.1);
+	font-size: 17px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: block; }
+
+h1 {
+	margin-top: 22px; font-size: 76px; line-height: 1.04; font-weight: 650; letter-spacing: -0.025em;
+	display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sub { margin-top: 16px; font-size: 28px; font-weight: 500; }
+.meta { margin-top: 10px; font-size: 20px; color: var(--muted); }
+.overview {
+	margin-top: 18px; width: 660px; font-size: 22px; line-height: 1.5; color: rgba(243, 245, 249, 0.72);
+	display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* --- sections ---------------------------------------------------------------- */
+.block { position: absolute; left: var(--pad); right: 0; }
+.label { font-size: 19px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 18px; }
+.watch { top: 560px; }
+.apps { top: 868px; }
+
+/* the clip starts 48px left of the content edge so the focused (scaled) first card isn't cut off */
+.clip { width: 1920px; overflow: hidden; padding: 18px 0 22px 48px; margin: -18px 0 -22px -48px; }
+.track { display: flex; gap: 20px; transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1); will-change: transform; }
+
+/* --- cards --------------------------------------------------------------------- */
+.card { position: relative; flex: none; transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1); will-change: transform; }
+.card.on { transform: scale(1.06); }
+
+/* focus ring + glow on its own pre-painted layer: only opacity changes */
+.ring {
+	position: absolute; inset: -3px; border-radius: 20px; pointer-events: none; opacity: 0;
+	border: 3px solid rgba(255, 255, 255, 0.92);
+	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 36px rgba(169, 155, 255, 0.28);
+	transition: opacity 160ms ease; will-change: opacity;
+}
+.card.on .ring { opacity: 1; }
+.card.wide .ring { bottom: auto; height: 172px; }   /* hug the image, not the caption */
+
+.card.wide { width: 296px; }
+.thumb {
+	position: relative; width: 296px; height: 166px; border-radius: 16px; overflow: hidden;
+	background: linear-gradient(135deg, #1b1d2a, #11121a);
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 600; color: var(--faint); }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: rgba(0, 0, 0, 0.55); }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 0 3px 3px 0; }
+.cap { padding: 14px 4px 0; }
+.cap .t { font-size: 21px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap .s { margin-top: 4px; font-size: 17px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.approw { display: flex; gap: 16px; }
+.card.app {
+	width: var(--tile-w, 178px); height: 124px; border-radius: 18px; background: var(--surface);
+	display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+}
+.card.app.on { background: var(--surface-hi); }
+.app-icon { width: 56px; height: 56px; border-radius: 13px; display: block; object-fit: cover; }
+.app-glyph { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+.app-title { font-size: 19px; font-weight: 550; color: var(--muted); }
+.card.app.on .app-title { color: var(--text); }
+
+/* --- Jellyfin sign-in ------------------------------------------------------------ */
+.cx-input {
+	width: 520px; height: 76px; padding: 0 26px; border-radius: 16px; border: 3px solid transparent; outline: none;
+	background: var(--surface-hi); color: var(--text); font: inherit; font-size: 30px; font-weight: 500;
+}
+.cx-input:focus { border-color: #fff; }
+.connect {
+	width: 1180px; height: 166px; padding: 0 44px; border-radius: 20px; background: var(--surface);
+	display: flex; align-items: center; justify-content: space-between; gap: 40px;
+}
+.cx-title { font-size: 30px; font-weight: 600; }
+.cx-help { margin-top: 10px; width: 560px; font-size: 20px; line-height: 1.45; color: var(--muted); }
+.cx-code { font-size: 64px; font-weight: 600; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+/* --- toast ------------------------------------------------------------------------ */
+.toast {
+	position: absolute; left: 50%; bottom: 28px; transform: translate3d(-50%, 12px, 0);
+	padding: 12px 24px; border-radius: 999px; background: rgba(255, 255, 255, 0.14);
+	font-size: 20px; opacity: 0; transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast.show { opacity: 1; transform: translate3d(-50%, 0, 0); }
+
+/* --- OLED idle screen ------------------------------------------------------------ */
+/* The whole UI sits in .ui. Idle = it fades out and is hidden (no compositing at all), a pure-black layer
+   fades in, and only a dim clock remains. Everything animates opacity only. */
+.ui { position: absolute; inset: 0; opacity: 1; transition: opacity 1.4s ease; }
+.ui.ui-off { opacity: 0; visibility: hidden; transition: opacity 1.4s ease, visibility 0s 1.4s; }
+
+.idle { position: absolute; inset: 0; background: #000; opacity: 0; visibility: hidden; transition: opacity 1.4s ease, visibility 0s 1.4s; }
+.idle.on { opacity: 1; visibility: visible; transition: opacity 1.4s ease, visibility 0s; }
+
+.idle-clock { position: absolute; left: 0; top: 0; opacity: 0; transition: opacity 1.6s ease; will-change: transform, opacity; }
+.idle-clock.on { opacity: 1; }
+.ic-time {
+	font-size: 220px; line-height: 1; font-weight: 200; letter-spacing: -0.04em; font-variant-numeric: tabular-nums;
+	color: rgba(243, 245, 249, 0.34); transition: color 4s ease;
+}
+.ic-date { margin: 16px 0 0 12px; font-size: 30px; font-weight: 400; letter-spacing: 0.02em; color: rgba(243, 245, 249, 0.2); transition: color 4s ease; }
+/* after a long idle, dim even further */
+.idle.deep .ic-time { color: rgba(243, 245, 249, 0.16); }
+.idle.deep .ic-date { color: rgba(243, 245, 249, 0.1); }
+
+/* hero with nothing below it (no watch row): sit nearer the apps instead of floating high */
+.hero.solo { bottom: 330px; }
+.hero.solo h1 { font-size: 64px; }
+
+/* --- pointer (Magic Remote) ------------------------------------------------------- */
+.card { cursor: pointer; }
+.idle { cursor: none; }   /* no cursor on the OLED idle screen */
+
+/* --- coming up / downloading strip (top bar, centre) ------------------------------------------ */
+.strip { position: absolute; top: 66px; left: 520px; right: 520px; height: 34px; text-align: center; pointer-events: none; }
+.strip .line {
+	font-size: 22px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	animation: stripcycle 8s ease infinite both;   /* fades in, holds, fades out; the text swaps at the end of each cycle */
+}
+.strip b { margin-right: 14px; font-size: 15px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+@keyframes stripcycle { 0% { opacity: 0; transform: translate3d(0, 6px, 0); } 9% { opacity: 1; transform: none; } 90% { opacity: 1; } 100% { opacity: 0; } }
+
+/* --- idle screen: one dim info line under the date (changes with each hop of the clock) ---------- */
+.ic-info {
+	margin: 22px 0 0 12px; max-width: 700px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	font-size: 26px; color: rgba(243, 245, 249, 0.2); transition: color 4s ease;
+}
+.ic-info b { margin-right: 14px; font-size: 16px; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(243, 245, 249, 0.14); }
+.idle.deep .ic-info { color: rgba(243, 245, 249, 0.1); }
+.idle.deep .ic-info b { color: rgba(243, 245, 249, 0.07); }
+
+/* --- HDMI tiles: device name + port; dimmed while nothing (powered) is plugged in ------------------------- */
+.card.app .app-sub { margin-top: -8px; font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--faint); }
+.card.app.dim { opacity: 0.42; transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 300ms ease; }
+.card.app.dim.on { opacity: 0.7; }   /* still reachable: the device may just be asleep */

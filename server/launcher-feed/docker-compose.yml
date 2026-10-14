@@ -1,0 +1,26 @@
+# Optional read-only feed for the Minimal Home launcher's "coming up / downloading" strip (see feed.py).
+# Its own compose project: no existing stack file is touched. feed.env (mode 0600) holds SONARR_KEY / RADARR_KEY and,
+# if Sonarr/Radarr aren't reachable as http://sonarr:8989 / http://radarr:7878, SONARR_URL / RADARR_URL.
+# Set FEED_BIND to the server's LAN address (never 0.0.0.0) and ARR_NETWORK to the docker network Sonarr/Radarr are on.
+name: launcher-feed
+services:
+  launcher-feed:
+    image: python:3.12-slim
+    container_name: launcher-feed
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    env_file: ./feed.env
+    command: ["python", "/app/feed.py"]
+    volumes:
+      - ./feed.py:/app/feed.py:ro
+    ports:
+      - "${FEED_BIND:?set FEED_BIND to the server's LAN address}:8091:8091"
+    networks: [arr]
+networks:
+  arr:
+    name: ${ARR_NETWORK:?set ARR_NETWORK to the docker network of Sonarr/Radarr}
+    external: true

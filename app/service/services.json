@@ -1,0 +1,9 @@
+{
+    "id": "tld.my.minimalhome.service",
+    "description": "Minimal Home helper: boot/wake launch, Back/Home handling, safeguards",
+    "services": [
+        {
+            "name": "tld.my.minimalhome.service"
+        }
+    ]
+}

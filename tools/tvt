@@ -1,0 +1,7 @@
+#!/bin/sh
+# Same as ./tv but with a pseudo-terminal (-tt): luna-send over SSH silently fails without one.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$HERE/../config.env" ] && . "$HERE/../config.env"
+: "${TV_IP:?set TV_IP in config.env}" "${TV_SSH_KEY:=$HOME/.ssh/id_rsa}"
+KH=""; [ -n "${TV_KNOWN_HOSTS:-}" ] && KH="-o UserKnownHostsFile=$TV_KNOWN_HOSTS"
+exec ssh -tt -i "$TV_SSH_KEY" -o BatchMode=yes -o ConnectTimeout=8 -o LogLevel=ERROR $KH "root@$TV_IP" "$@"
