@@ -9,6 +9,8 @@ episode there, from where you left off.
 
 Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, see [Tested on](#tested-on).
 
+![Minimal Home: continue watching, app tiles and HDMI inputs](docs/screenshots/home.jpg)
+
 ## Features
 
 - **Continue watching** from Jellyfin (resume, recently started, next up). OK on a card plays it in Jellyfin Native at
@@ -17,6 +19,9 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, se
   HDMI inputs, which show the input name and dim when nothing is switched on.
 - **OLED idle screen** after 60 s without input: true black with a thin, dim clock that moves every minute; panel off
   after 30 minutes. LG's own screensaver is switched off only while the launcher is in front.
+
+  <img src="docs/screenshots/idle.jpg" alt="The OLED idle screen: a dim clock on black" width="480">
+
 - **Boots straight onto the launcher** and is the system Home: the Home key and Back from an app land on it.
 - Magic Remote pointer support.
 - Optional: a "coming up / downloading" line from Sonarr + Radarr, through a small read-only feed service on your
@@ -115,4 +120,4 @@ Optional (`--with-telemetry-block`): a boot hook that blocks LG's ad and telemet
 
 [0BSD](LICENSE): do anything you like with it, no attribution needed. The app logos in `app/public/icons/` (Netflix,
 Twitch, Jellyfin, …) belong to their owners and are not covered by this license; they are only there so the tiles look
-like the apps they open. Inter is under the SIL Open Font License.
+like the apps they open. Inter is under the SIL Open Font License. The film and series artwork in the screenshots (`docs/screenshots/`) belongs to its rights holders and is only shown to illustrate the app.
