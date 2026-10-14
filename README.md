@@ -7,7 +7,7 @@ straight to it (no flash of LG's own launcher).
 It pairs with [Jellyfin Native](https://github.com/SchulzCode/WebOS-Jellyfin-Native), a native Jellyfin client: a press on a card plays the
 episode there, from where you left off.
 
-Unofficial; not affiliated with LG or the Jellyfin project. Tested on an LG OLED B4 (webOS 25).
+Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, see [Tested on](#tested-on).
 
 ## Features
 
@@ -22,6 +22,18 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on an LG OLED
 - Optional: a "coming up / downloading" line from Sonarr + Radarr, through a small read-only feed service on your
   server (`server/launcher-feed/`).
 
+## Tested on
+
+Developed and tested on one TV; other models are untested. If it works (or doesn't) on yours, please open an issue.
+
+| | |
+|---|---|
+| TV | LG OLED55B4ELA (OLED B4, 2024, EU) |
+| Firmware | 33.31.75 |
+| webOS | webOS TV 25 (webOS 10.3.2, board K24) |
+| Root / homebrew | rooted, Homebrew Channel 0.7.3, SSH on |
+| Jellyfin server | 12.2.0 |
+
 ## Requirements
 
 - An LG webOS TV that is **rooted**, with the [Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel)
@@ -34,10 +46,12 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on an LG OLED
 
 ```sh
 cp config.example.env config.env        # the TV's address and your SSH key
-# 1. install the app: the release .ipk via the Homebrew Channel / ares-install, or build it: scripts/rebuild-all.sh
+# 1. install the app: the .ipk from Releases via the Homebrew Channel / ares-install, or build it: scripts/rebuild-all.sh
 # 2. one-time setup on the TV (helper, boot hook, Home default):
 scripts/rebuild-all.sh --setup
 ```
+
+Releases: https://github.com/SchulzCode/WebOS-Minimal-Launcher/releases
 
 On first start the launcher asks for your Jellyfin server (taken over from Jellyfin Native automatically if that is
 already signed in), then shows a Quick Connect code to approve in any signed-in Jellyfin app.
