@@ -26,7 +26,13 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, se
 - **Boots straight onto the launcher** and is the system Home: the Home key and Back from an app land on it.
 - Magic Remote pointer support.
 - Optional: a "coming up / downloading" line from Sonarr + Radarr, through a small read-only feed service on your
-  server (`server/launcher-feed/`).
+  server (`server/launcher-feed/`). While something downloads it is asked every 20 s and counts down in between
+  (Sonarr/Radarr only check the download client about once a minute, so the feed estimates progress and time left for
+  the moment it answers). Downloads Sonarr/Radarr refuse to import (e.g. a fake release that is an `.exe`) show up as a
+  "Download problem". Jellyfin Native uses the same feed for its "Downloading" row (`/art/...` serves the artwork) and
+  its storage panel (`/storage`). Optionally (`FEED_ALLOW_DELETE=1` in config.env, off by default) it also lets Jellyfin
+  Native delete a film or a whole series through Sonarr/Radarr - only with a Jellyfin administrator's sign-in, which the
+  service checks with Jellyfin; every delete is written to the container log.
 
 ## Tested on
 

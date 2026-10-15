@@ -15,7 +15,7 @@ DEST="$SERVER_DIR"
 "${SSH[@]}" "mkdir -p '$DEST'"
 scp -q -i "$SERVER_KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o LogLevel=ERROR "$HERE/feed.py" "$HERE/docker-compose.yml" "$SERVER_SSH:$DEST/"
 
-"${SSH[@]}" FEED_BIND="$FEED_BIND" ARR_NETWORK="$ARR_NETWORK" bash -s "$DEST" <<'REMOTE'
+"${SSH[@]}" FEED_BIND="$FEED_BIND" ARR_NETWORK="$ARR_NETWORK" FEED_ALLOW_DELETE="${FEED_ALLOW_DELETE:-0}" bash -s "$DEST" <<'REMOTE'
 set -euo pipefail
 DEST="$1"; cd "$DEST"
 umask 077
@@ -26,6 +26,10 @@ if [ ! -s feed.env ]; then
 	printf 'SONARR_KEY=%s\nRADARR_KEY=%s\n' "$S" "$R" > feed.env
 	echo "feed.env created (keys: sonarr ${#S} chars, radarr ${#R} chars - not shown)"
 fi
+# the optional delete for Jellyfin Native (FEED_ALLOW_DELETE=1 in config.env; admins only, see feed.py)
+grep -v '^ALLOW_DELETE=' feed.env > feed.env.new || true
+echo "ALLOW_DELETE=$FEED_ALLOW_DELETE" >> feed.env.new
+mv feed.env.new feed.env
 chmod 600 feed.env
 docker compose up -d --force-recreate 2>&1 | tail -3
 sleep 4

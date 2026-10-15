@@ -5,7 +5,7 @@ import {
 	quickConnectInitiate, quickConnectPoll, saveSession, type Card, type Session
 } from './lib/jellyfin';
 import {installedApps, isWebOS, jellyfinServerFromNative, launchApp, openJellyfinItem, panelOff, watchInputs, type InputPort} from './lib/luna';
-import {feedLines, fetchFeed, type Feed, type Line} from './lib/feed';
+import {downloadsActive, feedLines, fetchFeed, type Feed, type Line} from './lib/feed';
 
 // Layout constants (CSS px at 1920×1080) — keep in sync with styles.css.
 const CARD_W = 296;
@@ -20,7 +20,7 @@ const IDLE_OFF_MS = 1_800_000;  // …and after this much idle time in total the
 type Link = 'loading' | 'ready' | 'connect' | 'offline';
 
 declare global {
-	interface Window {__hoverLog?: {sinceVisible: number; toFrame: number}[]; __MOCK__?: {cards?: Card[]; link?: Link; code?: string; idleMs?: number; feed?: Feed; ports?: InputPort[]}}
+	interface Window {__hoverLog?: {sinceVisible: number; toFrame: number}[]; __MOCK__?: {cards?: Card[]; link?: Link; code?: string; idleMs?: number; feed?: Omit<Feed, 'at'>; ports?: InputPort[]}}
 }
 
 /** The current time, updated right on each minute change (and when the launcher is shown again: timers sleep while hidden). */
@@ -379,21 +379,25 @@ export default function App () {
 
 	// --- coming up / downloading strip ----------------------------------------------------
 	// Data comes from the read-only feed service on the server (Sonarr + Radarr summary). Refreshed when the launcher is
-	// shown again and every 10 minutes; any failure simply hides the strip.
+	// shown again, every 20 s while something is downloading (once a minute behind the idle screen), otherwise every
+	// 10 minutes; between requests the strip counts down by itself (feedLines). Any failure simply hides the strip.
 	useEffect(() => {
 		const mock = import.meta.env.DEV ? window.__MOCK__?.feed : undefined;
-		if (mock) { setFeed(mock); return; }
+		if (mock) { setFeed({...mock, at: Date.now()}); return; }
 		if (!isWebOS()) return;
-		let last = 0;
+		let last = 0, timer = 0, active = false, alive = true;
+		const schedule = () => {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(refresh, active ? (idleRef.current ? 60_000 : 20_000) : 10 * 60_000);
+		};
 		const refresh = () => {
-			if (document.hidden || Date.now() - last < 30_000) return;
+			if (document.hidden || Date.now() - last < 15_000) { schedule(); return; }
 			last = Date.now();
-			void fetchFeed().then(setFeed);
+			void fetchFeed().then((f) => { if (!alive) return; active = downloadsActive(f); setFeed(f); schedule(); });
 		};
 		refresh();
-		const every = window.setInterval(refresh, 10 * 60_000);
 		document.addEventListener('visibilitychange', refresh);
-		return () => { window.clearInterval(every); document.removeEventListener('visibilitychange', refresh); };
+		return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', refresh); };
 	}, []);
 
 	// OLED guard.

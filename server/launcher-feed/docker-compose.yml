@@ -1,6 +1,8 @@
 # Optional read-only feed for the Minimal Home launcher's "coming up / downloading" strip (see feed.py).
 # Its own compose project: no existing stack file is touched. feed.env (mode 0600) holds SONARR_KEY / RADARR_KEY and,
 # if Sonarr/Radarr aren't reachable as http://sonarr:8989 / http://radarr:7878, SONARR_URL / RADARR_URL.
+# ALLOW_DELETE=1 (deploy.sh writes it from FEED_ALLOW_DELETE) enables Jellyfin Native's delete for Jellyfin admins; it
+# needs Jellyfin reachable on the same network as http://jellyfin:8096, or JELLYFIN_URL in feed.env.
 # Set FEED_BIND to the server's LAN address (never 0.0.0.0) and ARR_NETWORK to the docker network Sonarr/Radarr are on.
 name: launcher-feed
 services:
