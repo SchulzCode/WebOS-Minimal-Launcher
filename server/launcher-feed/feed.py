@@ -12,9 +12,12 @@ document, so the TV never needs the (admin-level) API keys: they stay on the ser
   GET /health                     -> "ok"
 
 Optional, off unless ALLOW_DELETE=1 - Jellyfin Native's "Delete" button for a film or a whole series:
-  GET  /manage/item?id=<Jellyfin item id>    -> what would be deleted (title, size, episode files) + free space
-  POST /manage/delete?id=<Jellyfin item id>  -> deletes it through Sonarr/Radarr (files included, and they stop
-                                                downloading it), then tells Jellyfin
+  GET  /manage/item?id=<Jellyfin item id>    -> what would be deleted (Sonarr's/Radarr's id and title, size, episode
+                                                files) + free space
+  POST /manage/delete?id=<Jellyfin item id>&expect=<that Sonarr/Radarr id>
+                                             -> deletes it through Sonarr/Radarr (files included, and they stop
+                                                downloading it), then removes it from Jellyfin. `expect` must be the id
+                                                the preview showed, so nothing else is ever deleted.
 Both need the caller's own Jellyfin sign-in (the "Authorization: MediaBrowser ... Token=..." header Jellyfin clients send);
 it is checked with Jellyfin and must belong to an administrator. Every delete is logged to the container log.
 
@@ -139,7 +142,7 @@ def build():
     def queue(base, key, kind):
         extra = {"includeSeries": "true", "includeEpisode": "true"} if kind == "episode" else {"includeMovie": "true"}
         groups = {}                                 # downloadId -> records (a season pack is many records, one download)
-        for q in api(base, key, "queue", page=1, pageSize=50, **extra).get("records", []):
+        for q in api(base, key, "queue", page=1, pageSize=250, **extra).get("records", []):   # a season pack is one record per episode
             groups.setdefault(q.get("downloadId") or str(q.get("id")), []).append(q)
         for did, recs in groups.items():
             q = recs[0]
@@ -265,18 +268,20 @@ def resolve(item_id, auth):
         raise Refused(403, "only a Jellyfin administrator can delete")
     item = jellyfin("/Items/%s?userId=%s&fields=Path,ProviderIds" % (item_id, me["Id"]), auth)
     kind, path, ids = item.get("Type"), (item.get("Path") or "").rstrip("/"), {k.lower(): v for k, v in (item.get("ProviderIds") or {}).items()}
+    # the same folder is the surest match; the TVDB/TMDB id only when no folder matches (Jellyfin and Sonarr/Radarr
+    # seeing the media under different paths)
     if kind == "Series" and SONARR_KEY:
-        for s in api(SONARR_URL, SONARR_KEY, "series"):
-            if (s.get("path") or "").rstrip("/") == path or (ids.get("tvdb") and str(s.get("tvdbId")) == ids["tvdb"]):
-                return me.get("Name", "?"), item, "sonarr", s
+        app, recs, folder, idkey, ours = "sonarr", api(SONARR_URL, SONARR_KEY, "series"), path, "tvdbId", ids.get("tvdb")
     elif kind == "Movie" and RADARR_KEY:
-        folder = os.path.dirname(path)
-        for m in api(RADARR_URL, RADARR_KEY, "movie"):
-            if (m.get("path") or "").rstrip("/") == folder or (ids.get("tmdb") and str(m.get("tmdbId")) == ids["tmdb"]):
-                return me.get("Name", "?"), item, "radarr", m
+        app, recs, folder, idkey, ours = "radarr", api(RADARR_URL, RADARR_KEY, "movie"), os.path.dirname(path), "tmdbId", ids.get("tmdb")
     else:
         raise Refused(400, "only a film or a whole series can be deleted")
-    raise Refused(404, "Sonarr/Radarr don't manage this title")
+    found = [r for r in recs if folder and (r.get("path") or "").rstrip("/") == folder]
+    if not found and ours:
+        found = [r for r in recs if str(r.get(idkey)) == ours]
+    if len(found) != 1:
+        raise Refused(404, "Sonarr/Radarr don't manage this title" if not found else "more than one Sonarr/Radarr title matches - delete it there")
+    return me.get("Name", "?"), item, app, found[0]
 
 
 def summary(app, rec):
@@ -286,16 +291,18 @@ def summary(app, rec):
         seasons = len([x for x in rec.get("seasons") or [] if (x.get("statistics") or {}).get("episodeFileCount")])
     else:
         size, files, seasons = rec.get("sizeOnDisk") or (rec.get("movieFile") or {}).get("size", 0), 1 if rec.get("hasFile") else 0, 0
-    return {"app": app, "title": rec.get("title", "?"), "year": rec.get("year"), "size": size, "files": files, "seasons": seasons}
+    return {"app": app, "id": rec.get("id"), "title": rec.get("title", "?"), "year": rec.get("year"), "size": size, "files": files, "seasons": seasons}
 
 
-def manage(action, item_id, auth):
+def manage(action, item_id, auth, expect=""):
     try:
         user, item, app, rec = resolve(item_id, auth)
         out = summary(app, rec)
         if action == "item":
             out["volumes"] = json.loads(storage_body()).get("volumes", [])
             return 200, out
+        if expect != str(rec.get("id")):
+            raise Refused(409, "what would be deleted has changed - open the title again")
         base, key = (SONARR_URL, SONARR_KEY) if app == "sonarr" else (RADARR_URL, RADARR_KEY)
         excl = "addImportListExclusion" if app == "sonarr" else "addImportExclusion"
         arr_call(base, key, "DELETE", "%s/%d" % ("series" if app == "sonarr" else "movie", rec["id"]), deleteFiles="true", **{excl: "false"})
@@ -388,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _manage(self, action):
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        code, out = manage(action, (q.get("id") or [""])[0], self.headers.get("Authorization", ""))
+        code, out = manage(action, (q.get("id") or [""])[0], self.headers.get("Authorization", ""), (q.get("expect") or [""])[0])
         self._send(code, json.dumps(out, ensure_ascii=False).encode("utf-8"))
 
     def do_POST(self):

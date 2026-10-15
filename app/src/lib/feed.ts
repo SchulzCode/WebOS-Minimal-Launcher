@@ -70,10 +70,11 @@ export function feedLines (feed: Feed | null, now: Date = new Date()): Line[] {
 	for (const d of feed.downloading) {
 		const name = [d.title, d.label].filter(Boolean).join(' ');
 		if (d.state === 'blocked' || d.state === 'failed') { out.push({tag: 'Download problem', text: `${name} · ${d.state === 'blocked' ? 'not imported - check Sonarr/Radarr' : 'failed'}`}); continue; }
-		if (d.state ? !['downloading', 'queued', 'paused', 'stalled'].includes(d.state) : d.progress >= 0.999 || /completed|import/i.test(d.status)) continue;   // finished, being imported: not interesting
+		if (d.state ? !['downloading', 'queued', 'paused', 'stalled', 'warning'].includes(d.state) : d.progress >= 0.999 || /completed|import/i.test(d.status)) continue;   // finished, being imported: not interesting
+		if (d.state === 'queued') { out.push({tag: 'Downloading', text: `${name} · queued`}); continue; }
 		const {progress, left} = liveDownload(d, feed.at);
 		const pct = `${Math.floor(progress * 100)}%`;
-		const rest = d.state && d.state !== 'downloading' ? d.state
+		const rest = d.state === 'warning' ? 'needs a look in Sonarr/Radarr' : d.state && d.state !== 'downloading' ? d.state
 			: left !== null ? (left > 0 ? `${durationLabel(left)} left` : '')
 				: d.timeleft && d.timeleft !== '00:00:00' ? d.timeleft : '';
 		out.push({tag: 'Downloading', text: `${name} · ${pct}${rest ? ` · ${rest}` : ''}`});
