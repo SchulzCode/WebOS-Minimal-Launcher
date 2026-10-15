@@ -94,6 +94,8 @@ would do nothing until the helper's safeguard notices (it resets the Home defaul
 | `/var/lib/webosbrew/init.d/50-minimalhome` + `/var/lib/webosbrew/minimalhome-helper/` | starts the helper at boot | `uninstall.sh` |
 
 Optional (`--with-telemetry-block`): a boot hook that blocks LG's ad and telemetry hosts (`tv-hooks/`).
+Optional (`--with-no-voice`): a boot hook that switches off voice input, so the Magic Remote's microphone does nothing
+(`tv-hooks/61-no-voice`; the B4 has no built-in microphones or camera).
 
 ## Security
 
@@ -114,7 +116,7 @@ Optional (`--with-telemetry-block`): a boot hook that blocks LG's ad and telemet
 | `app/service/` | the helper service `tld.my.minimalhome.service` (Node, runs as root) + its boot script |
 | `scripts/` | `rebuild-all.sh` (build/install/setup), `uninstall.sh` |
 | `server/launcher-feed/` | optional read-only Sonarr/Radarr feed (Docker) |
-| `tv-hooks/` | optional telemetry host block |
+| `tv-hooks/` | optional telemetry host block, optional voice/microphone off |
 | `tools/` | SSH wrappers (`tv`, `tvt`) and a DevTools client (`cdp.mjs`) for development |
 
 ## License

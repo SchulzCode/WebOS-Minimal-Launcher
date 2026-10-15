@@ -9,6 +9,7 @@
 #   arm        (re)start the helper service now
 #   verify     print a health summary (never changes anything)
 # Optional: --with-telemetry-block (+ reapply the LG ad/telemetry host block hook)
+#           --with-no-voice (+ boot hook that switches off voice input / the remote's microphone)
 #           --with-feed (+ deploy/update the read-only Sonarr/Radarr feed on the server, see server/launcher-feed)
 # Everything is idempotent. Settings come from config.env (copy config.example.env); nothing secret is stored here.
 set -euo pipefail
@@ -27,20 +28,21 @@ SVC_DIR=/media/developer/apps/usr/palm/services/$APP_ID.service
 HELPER_DIR=/var/lib/webosbrew/minimalhome-helper
 export TV_IP TV_SSH_KEY TV_KNOWN_HOSTS
 
-DRY=0; ONLY=""; WITH_TELEMETRY=0; WITH_FEED=0
+DRY=0; ONLY=""; WITH_TELEMETRY=0; WITH_FEED=0; WITH_NOVOICE=0
 usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
 
-Usage: scripts/rebuild-all.sh [--dry-run] [--only STEP] [--with-telemetry-block]
+Usage: scripts/rebuild-all.sh [--dry-run] [--only STEP] [--with-telemetry-block] [--with-no-voice]
   --dry-run               print what would happen, change nothing
   --only STEP             run just one step (build, install, post, settings, arm, verify)
   --setup                 only the TV setup (post, settings, arm, verify) - after installing a release .ipk
   --with-telemetry-block  also (re)install the telemetry host-block boot hook (tv-hooks/)
+  --with-no-voice         also (re)install the boot hook that switches off voice input (tv-hooks/61-no-voice)
   --with-feed             also deploy/update the launcher feed on the server (needs SERVER_* in config.env)
 EOF
 }
 while [ $# -gt 0 ]; do case "$1" in
 	--dry-run) DRY=1;; --only) ONLY="${2:-}"; shift;; --setup) ONLY=setup;;
-	--with-telemetry-block) WITH_TELEMETRY=1;; --with-feed) WITH_FEED=1;; -h|--help) usage; exit 0;;
+	--with-telemetry-block) WITH_TELEMETRY=1;; --with-no-voice) WITH_NOVOICE=1;; --with-feed) WITH_FEED=1;; -h|--help) usage; exit 0;;
 	*) echo "unknown option: $1" >&2; usage >&2; exit 2;; esac; shift; done
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -101,6 +103,11 @@ step_post() {
 		run scp -O -q -i "$TV_SSH_KEY" -o BatchMode=yes "${SCP_KH[@]}" "$ROOT/tv-hooks/telemetry-block/hosts.txt" "root@$TV_IP:/var/lib/webosbrew/telemetry-block/hosts.txt"
 		run scp -O -q -i "$TV_SSH_KEY" -o BatchMode=yes "${SCP_KH[@]}" "$ROOT/tv-hooks/60-telemetry-block" "root@$TV_IP:/var/lib/webosbrew/init.d/60-telemetry-block"
 		run TV "chmod 755 /var/lib/webosbrew/init.d/60-telemetry-block; chown root:root /var/lib/webosbrew/init.d/60-telemetry-block /var/lib/webosbrew/telemetry-block/hosts.txt; sh /var/lib/webosbrew/init.d/60-telemetry-block"
+	fi
+	if [ "$WITH_NOVOICE" = 1 ]; then
+		say "no-voice hook (voice input / remote microphone off)"
+		run scp -O -q -i "$TV_SSH_KEY" -o BatchMode=yes "${SCP_KH[@]}" "$ROOT/tv-hooks/61-no-voice" "root@$TV_IP:/var/lib/webosbrew/init.d/61-no-voice"
+		run TV "chmod 755 /var/lib/webosbrew/init.d/61-no-voice; chown root:root /var/lib/webosbrew/init.d/61-no-voice; sh /var/lib/webosbrew/init.d/61-no-voice"
 	fi
 }
 

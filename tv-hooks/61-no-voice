@@ -1,0 +1,23 @@
+#!/bin/sh
+# Switch off voice input: the TV's voice framework, voice input, the Magic Remote's microphone receiver and the
+# microphone service. Only the remote has a microphone (no built-in microphones or camera on the B4: configd
+# tv.model.supportFarFieldVoice "off", tv.model.cameraType "not support"); with these stopped its voice button does
+# nothing. Keys, pointer and the on-screen keyboard keep working.
+# Runs from /var/lib/webosbrew/init.d. Must stay fast and never fail hard: a hook that hangs trips webosbrew's
+# failsafe flag, so the work runs detached.
+# UNDO: delete this file and reboot (or now: systemctl start voiceconductor voiceinput com.webos.service.microphone).
+
+(
+    i=0
+    # services may still be starting when we run, and the remote's receiver (voiceinput_hidraw) is started on demand
+    while [ $i -lt 18 ]; do
+        for s in voiceconductor voiceinput com.webos.service.microphone; do
+            systemctl is-active -q "$s" 2>/dev/null && systemctl stop "$s" >/dev/null 2>&1
+        done
+        p=$(pidof voiceinput_hidraw) && kill $p 2>/dev/null
+        i=$((i + 1))
+        sleep 10
+    done
+) </dev/null >/dev/null 2>&1 &
+
+exit 0
