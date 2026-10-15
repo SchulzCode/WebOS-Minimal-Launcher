@@ -25,14 +25,45 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, se
 
 - **Boots straight onto the launcher** and is the system Home: the Home key and Back from an app land on it.
 - Magic Remote pointer support.
-- Optional: a "coming up / downloading" line from Sonarr + Radarr, through a small read-only feed service on your
-  server (`server/launcher-feed/`). While something downloads it is asked every 20 s and counts down in between
-  (Sonarr/Radarr only check the download client about once a minute, so the feed estimates progress and time left for
-  the moment it answers). Downloads Sonarr/Radarr refuse to import (e.g. a fake release that is an `.exe`) show up as a
-  "Download problem". Jellyfin Native uses the same feed for its "Downloading" row (`/art/...` serves the artwork) and
-  its storage panel (`/storage`). Optionally (`FEED_ALLOW_DELETE=1` in config.env, off by default) it also lets Jellyfin
-  Native delete a film or a whole series through Sonarr/Radarr - only with a Jellyfin administrator's sign-in, which the
-  service checks with Jellyfin; every delete is written to the container log.
+- Optional: a **"Downloading / Coming up" line** at the top from Sonarr + Radarr: what is downloading right now
+  (progress and time left, counting down live), downloads that need a look ("Download problem", e.g. a fake release
+  Sonarr refuses to import), and what airs or releases in the next days. It comes from a small feed service on your
+  server, see [Sonarr/Radarr feed](#sonarrradarr-feed-optional).
+
+## Sonarr/Radarr feed (optional)
+
+`server/launcher-feed/` is a tiny service (Python standard library only, one Docker container) that runs next to
+Sonarr and Radarr and summarises them for the TV, so the TV never holds their API keys. Minimal Home uses it for the
+line at the top; [Jellyfin Native](https://github.com/SchulzCode/WebOS-Jellyfin-Native) uses it for its "Downloading"
+row, the media storage panel and (if you allow it) deleting.
+
+| endpoint | what |
+|---|---|
+| `GET /feed` | what is downloading (one entry per download - a season pack is one entry - with state, progress, time left and artwork links) and what airs/releases in the next 7 days |
+| `GET /art/<sonarr\|radarr>/<id>/<fanart\|fanart-360\|poster-500\|clearlogo>` | the artwork Sonarr/Radarr already cached |
+| `GET /storage` | free and total space of the disks behind the root folders, and whether deleting is switched on |
+| `GET /manage/item`, `POST /manage/delete` | only with `ALLOW_DELETE=1`: what deleting a film or a whole series would remove, and the delete itself |
+| `GET /health` | `ok` |
+
+Sonarr and Radarr only ask the download client for news about once a minute, so the feed estimates progress and time
+left for the moment it is asked; the launcher asks every 20 s while something downloads (otherwise every 10 minutes)
+and counts down in between.
+
+**Setup**: fill in the `SERVER_*`, `FEED_BIND` and `ARR_NETWORK` lines in `config.env`, then run
+`server/launcher-feed/deploy.sh` (or `scripts/rebuild-all.sh --with-feed`). It copies the service to the server, reads
+the Sonarr/Radarr API keys there from their own `config.xml` straight into `feed.env` (mode 0600, never printed) and
+starts the container, bound to the server's LAN address only. Then point the launcher at it with `VITE_FEED_URL`
+(see [Install](#install)); Jellyfin Native finds it by itself on the Jellyfin server's host, port 8091.
+If Sonarr/Radarr aren't reachable as `http://sonarr:8989` / `http://radarr:7878` on that network, add `SONARR_URL` /
+`RADARR_URL` to `feed.env`.
+
+**Deleting from the TV** (off by default): `FEED_ALLOW_DELETE=1` in `config.env`, then deploy again. Jellyfin Native
+then shows a delete button on films and series. The service deletes through Sonarr/Radarr (files included, and they
+stop downloading it), because Jellyfin usually has the media read-only and Sonarr would just fetch it again. It only
+acts for a **Jellyfin administrator**: the app sends its own Jellyfin sign-in, the service checks it with Jellyfin
+(`http://jellyfin:8096` on the same network, or `JELLYFIN_URL` in `feed.env`), matches the title by folder (by
+TVDB/TMDB id only when no folder matches, and never when more than one title matches), and deletes only the exact
+Sonarr/Radarr entry the confirmation dialog showed. Every delete is written to the container log.
 
 ## Tested on
 
@@ -111,8 +142,11 @@ Optional (`--with-no-voice`): a boot hook that switches off voice input, so the 
 - The helper's bus methods only do fixed things (status, launch Jellyfin Native with a validated item id, list
   installed app ids, turn the panel off while the launcher is in front, report Jellyfin Native's server address - never
   its token). No shell is ever involved.
-- The Jellyfin access token lives in the launcher's own storage on the TV; no password is entered or stored. The feed
-  service holds the Sonarr/Radarr keys on the server; the TV never sees them.
+- The Jellyfin access token lives in the launcher's own storage on the TV; no password is entered or stored.
+- The feed service holds the Sonarr/Radarr keys on the server; the TV never sees them. It listens only on the server's
+  LAN address, runs as a non-root user in a read-only container without capabilities, and answers only GET requests -
+  except the optional delete, which needs a Jellyfin administrator's sign-in. That sign-in travels over plain HTTP on
+  your LAN (like the rest of the feed), so only switch deleting on in a network you trust.
 
 ## Layout
 
@@ -121,7 +155,7 @@ Optional (`--with-no-voice`): a boot hook that switches off voice input, so the 
 | `app/` | the launcher (Vite, React API bundled with Preact), `tld.my.minimalhome` |
 | `app/service/` | the helper service `tld.my.minimalhome.service` (Node, runs as root) + its boot script |
 | `scripts/` | `rebuild-all.sh` (build/install/setup), `uninstall.sh` |
-| `server/launcher-feed/` | optional read-only Sonarr/Radarr feed (Docker) |
+| `server/launcher-feed/` | optional Sonarr/Radarr feed (Docker): downloads, upcoming, artwork, storage, optional delete |
 | `tv-hooks/` | optional telemetry host block, optional voice/microphone off |
 | `tools/` | SSH wrappers (`tv`, `tvt`) and a DevTools client (`cdp.mjs`) for development |
 
