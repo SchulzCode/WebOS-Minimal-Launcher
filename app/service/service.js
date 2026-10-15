@@ -166,7 +166,7 @@ function watchForeground() {
 		log('foreground: ' + (id || '(none)'));
 		noneForeground(id === '');
 		if (id === APP_ID) keepLastInputApp();
-		if (id !== '') setSaver(id === APP_ID);   // '' = transition: leave as is
+		if (id !== '') setSaver(id === APP_ID || id === JF_NATIVE_ID);   // '' = transition: leave as is
 		if (id === STOCK_HOME) bounceHome();
 	});
 }
@@ -238,23 +238,21 @@ function watchPower() {
 
 // LG's own screensaver (com.webos.app.screensaver: pictures + analog clock) starts 3 minutes after the launcher came up and
 // would cover the launcher's own OLED idle screen (true black + dim drifting clock/info) - two idle screens on top of each other.
+// Same for Jellyfin Native: it has its own idle screen (menus, paused video), and LG's saver over a paused video meant two
+// screens to click away (LG's key press never reaches the app).
 // (tvpower's veto call, registerScreenSaverRequest ack:false, is accepted but ignored by this firmware - tested.) So the setting
-// itself is switched: general.screenSaverEnabled is "off" ONLY while the launcher is in front and "on" (the TV's factory value,
+// itself is switched: general.screenSaverEnabled is "off" ONLY while the launcher or Jellyfin Native is in front and "on" (the TV's factory value,
 // also what it was here) again as soon as any other app/input is in front, so HDMI and apps keep LG's burn-in protection.
 // Stateless on purpose: a restarted helper (or a reboot) can never leave the saver stuck off - the next non-launcher
 // foreground app turns it back on.
-var saverWanted = null;    // last value we asked for (avoid repeating the same call)
+// The real setting is read on every foreground change (one cheap call), so a value changed behind our back is corrected too.
 function setSaver(wantOff) {
 	var target = wantOff ? 'off' : 'on';
-	if (saverWanted === target) return;
 	lunaOnce('luna://com.webos.settingsservice/getSystemSettings', { category: 'general', keys: ['screenSaverEnabled'] }, function (e, cur) {
 		var v = cur && cur.settings && cur.settings.screenSaverEnabled;
-		if (!v) return;   // inconclusive: try again on the next foreground change
-		saverWanted = target;
-		if (v === target) return;
+		if (!v || v === target) return;   // inconclusive (try again on the next foreground change) or already right
 		lunaOnce('luna://com.webos.settingsservice/setSystemSettings', { category: 'general', settings: { screenSaverEnabled: target } }, function (e2, r) {
 			log('screensaver setting -> ' + target + ': ' + JSON.stringify(r));
-			if (!(r && r.returnValue)) saverWanted = null;
 		});
 	});
 }

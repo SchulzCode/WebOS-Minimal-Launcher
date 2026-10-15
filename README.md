@@ -18,7 +18,8 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, se
 - **App tiles** for the apps installed on the TV (YouTube, Netflix, Spotify, Twitch, Homebrew, Settings, …) and the
   HDMI inputs, which show the input name and dim when nothing is switched on.
 - **OLED idle screen** after 60 s without input: true black with a thin, dim clock that moves every minute; panel off
-  after 30 minutes. LG's own screensaver is switched off only while the launcher is in front.
+  after 30 minutes. LG's own screensaver is switched off only while the launcher or Jellyfin Native (which has its own
+  idle screen) is in front.
 
   <img src="docs/screenshots/idle.jpg" alt="The OLED idle screen: a dim clock on black" width="480">
 
@@ -88,7 +89,7 @@ would do nothing until the helper's safeguard notices (it resets the Home defaul
 | what | why | undone by |
 |---|---|---|
 | `general.defaultApps.home` → the launcher | Home key opens it directly | `uninstall.sh` |
-| `general.screenSaverEnabled` off while the launcher is in front, on otherwise | its own idle screen replaces LG's | `uninstall.sh` / any other app in front |
+| `general.screenSaverEnabled` off while the launcher or Jellyfin Native is in front, on otherwise | their own idle screens replace LG's | `uninstall.sh` / any other app in front |
 | `general.lastInputApp` / `physicalLastInputApp` kept on the launcher | power-on lands on it, not on HDMI | next input change |
 | `/var/lib/webosbrew/init.d/50-minimalhome` + `/var/lib/webosbrew/minimalhome-helper/` | starts the helper at boot | `uninstall.sh` |
 

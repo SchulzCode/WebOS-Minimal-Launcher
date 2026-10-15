@@ -17,7 +17,7 @@ export const JELLYFIN_APP_ID = 'tld.my.jfnative';
 
 const SESSION_KEY = 'minihome-jf-v1';
 const DEVICE_KEY = 'minihome-device-v1';
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 
 export interface Session {server: string; token: string; userId: string}
 
