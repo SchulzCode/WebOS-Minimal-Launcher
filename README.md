@@ -16,7 +16,9 @@ Unofficial; not affiliated with LG or the Jellyfin project. Tested on one TV, se
 - **Continue watching** from Jellyfin (resume, recently started, next up). OK on a card plays it in Jellyfin Native at
   the resume position.
 - **App tiles** for the apps installed on the TV (YouTube, Netflix, Spotify, Twitch, Homebrew, Settings, …) and the
-  HDMI inputs, which show the input name and dim when nothing is switched on.
+  HDMI inputs, which show the input name and dim when nothing is switched on. **Rearrange them**: hold OK on a tile
+  to pick it up, ◀ ▶ to move it (the others slide aside), OK to place it, Back to cancel; with the pointer, hold the
+  button and drag. The order is remembered.
 - **OLED idle screen** after 60 s without input: true black with a thin, dim clock that moves every minute; panel off
   after 30 minutes. LG's own screensaver is switched off only while the launcher or Jellyfin Native (which has its own
   idle screen) is in front.

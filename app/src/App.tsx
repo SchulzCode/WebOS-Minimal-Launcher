@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent} from 'react';
 import {APPS, HDMI_NAMES, type AppDef} from './lib/apps';
 import {
 	AuthError, JELLYFIN_APP_ID, checkServer, clearSession, loadServer, saveServer, fetchContinue, loadSession, quickConnectEnabled,
@@ -16,11 +16,14 @@ const IDLE_MS = 60_000;         // no input for this long → idle screen (true 
 const IDLE_DEEP_MS = 600_000;   // …after this much more idle time the clock dims further
 const IDLE_MOVE_MS = 60_000;    // the idle clock drifts to a new spot this often (fades out, jumps, fades in) - the info line changes then too
 const IDLE_OFF_MS = 1_800_000;  // …and after this much idle time in total the panel is switched off (any remote key brings it back)
+const LONG_PRESS_MS = 550;      // holding OK (or the pointer button) on an app tile this long picks it up to move it
+const ORDER_KEY = 'minihome-app-order';
 
 type Link = 'loading' | 'ready' | 'connect' | 'offline';
 
 declare global {
-	interface Window {__hoverLog?: {sinceVisible: number; toFrame: number}[]; __MOCK__?: {cards?: Card[]; link?: Link; code?: string; idleMs?: number; feed?: Omit<Feed, 'at'>; ports?: InputPort[]}}
+	interface KeyNote {t: number; what: string; up: number; hidden: boolean; idle: boolean}
+	interface Window {__keyLog?: KeyNote[];__hoverLog?: {sinceVisible: number; toFrame: number}[]; __MOCK__?: {cards?: Card[]; link?: Link; code?: string; idleMs?: number; feed?: Omit<Feed, 'at'>; ports?: InputPort[]}}
 }
 
 /** The current time, updated right on each minute change (and when the launcher is shown again: timers sleep while hidden). */
@@ -131,6 +134,22 @@ function AppIcon ({app}: {app: AppDef}) {
 	return <span className="app-glyph">{g}</span>;
 }
 
+/** The app order the user arranged (tile ids), [] = the default order from lib/apps.ts. */
+function loadOrder (): string[] {
+	try { const v = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; }
+}
+function saveOrder (ids: string[]) {
+	try { localStorage.setItem(ORDER_KEY, JSON.stringify(ids)); } catch { /* noop */ }
+}
+
+/** Tiles in the user's order; tiles the order doesn't know yet (apps installed later, HDMI 3/4) keep their default spot. */
+function applyOrder<T extends {id: string}> (tiles: T[], order: string[]): T[] {
+	if (!order.length) return tiles;
+	const out = order.map((id) => tiles.find((t) => t.id === id)).filter((t): t is T => !!t);
+	tiles.forEach((t, i) => { if (!order.includes(t.id)) out.splice(Math.min(i, out.length), 0, t); });
+	return out;
+}
+
 /** An app tile as shown: HDMI tiles carry the plugged-in device's name, the port as a second line, and dim when nothing is on. */
 type Tile = AppDef & {sub?: string; dim?: boolean};
 
@@ -208,7 +227,8 @@ export default function App () {
 		document.addEventListener('visibilitychange', onVis);
 		return () => document.removeEventListener('visibilitychange', onVis);
 	}, []);
-	const apps = useMemo(() => buildTiles(ports, installed), [ports, installed]);
+	const [order, setOrder] = useState<string[]>(loadOrder);
+	const apps = useMemo(() => applyOrder(buildTiles(ports, installed), order), [ports, installed, order]);
 	// a tile can disappear (HDMI 3/4 unplugged) while it has focus
 	useEffect(() => { if (row === 1) setCol((c) => Math.min(c, apps.length - 1)); }, [apps.length]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -464,6 +484,7 @@ export default function App () {
 		const p = lastPointer.current;
 		if (Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) < 6) return;
 		lastPointer.current = {x: e.clientX, y: e.clientY};
+		if (movingRef.current) { if (r === 1) moveTo(c); return; }
 		setRow(r);
 		setCol(c);
 		// diagnostics for real Magic-Remote use (read later over DevTools: window.__hoverLog): how long from the system's
@@ -476,6 +497,79 @@ export default function App () {
 		}));
 	}, []);
 
+	// --- arranging app tiles ----------------------------------------------------------
+	// Long-press OK (or hold the pointer button) on an app tile to pick it up. Then ◀ ▶ (or dragging with the button still
+	// held) moves it, OK / releasing after a drag places it, Back puts everything back as it was. The order is kept in
+	// localStorage; tiles it doesn't know (apps installed later) keep their default spot.
+	const [moving, setMoving] = useState<string | null>(null);   // id of the tile being moved
+	const movingRef = useRef<string | null>(null);
+	const moveFrom = useRef<string[]>([]);       // the order shown when the tile was picked up (Back restores it)
+	const moveByPointer = useRef(false);         // picked up with the pointer button: releasing after a drag places it
+	const moved = useRef(false);                 // the tile has changed place since it was picked up
+	const press = useRef({timer: 0, fired: false});
+
+	const pickUp = useCallback((i: number, byPointer: boolean) => {
+		const ids = nav.current.apps.map((a) => a.id);
+		if (!ids[i]) return;
+		moveFrom.current = ids;
+		moveByPointer.current = byPointer;
+		moved.current = false;
+		movingRef.current = ids[i];
+		setRow(1); setCol(i); setMoving(ids[i]);
+	}, []);
+	const moveTo = useCallback((to: number) => {
+		const id = movingRef.current;
+		if (!id) return;
+		const ids = nav.current.apps.map((a) => a.id);
+		const from = ids.indexOf(id), t = Math.max(0, Math.min(ids.length - 1, to));
+		if (from < 0 || t === from) return;
+		ids.splice(from, 1); ids.splice(t, 0, id);
+		moved.current = true;
+		setOrder(ids); setCol(t);
+	}, []);
+	const place = useCallback((keep: boolean) => {
+		const id = movingRef.current;
+		if (!id) return;
+		if (keep) saveOrder(nav.current.apps.map((a) => a.id));
+		else { setOrder(loadOrder()); setCol(Math.max(0, moveFrom.current.indexOf(id))); }
+		movingRef.current = null; moveByPointer.current = false;
+		setMoving(null);
+	}, []);
+	/** A press on an app tile starts the long-press timer (OK can arrive as a key press AND a pointer press: one timer). */
+	const pressStart = useCallback((i: number, byPointer: boolean) => {
+		if (press.current.timer || movingRef.current) return;
+		press.current.fired = false;
+		press.current.timer = window.setTimeout(() => { press.current.timer = 0; press.current.fired = true; pickUp(i, byPointer); }, LONG_PRESS_MS);
+	}, [pickUp]);
+	/** The press ended: true if it was a short one (= open the app). */
+	const pressEnd = useCallback(() => {
+		if (!press.current.timer) return false;
+		window.clearTimeout(press.current.timer); press.current.timer = 0;
+		return true;
+	}, []);
+	useEffect(() => {
+		// releasing the pointer button after dragging a tile places it; a plain long press without dragging keeps it
+		// picked up, so it can still be moved with ◀ ▶ or the pointer
+		const onUp = () => { if (movingRef.current && moveByPointer.current && moved.current) place(true); else pressEnd(); };
+		window.addEventListener('mouseup', onUp);
+		return () => window.removeEventListener('mouseup', onUp);
+	}, [place, pressEnd]);
+
+	// tiles glide to their new place (FLIP: measure where each one was, start it there, let it slide in)
+	const tileEls = useRef(new Map<string, HTMLDivElement>());
+	const tileX = useRef(new Map<string, number>());
+	useLayoutEffect(() => {
+		const next = new Map<string, number>();
+		tileEls.current.forEach((el, id) => {
+			const x = el.offsetLeft, was = tileX.current.get(id);
+			next.set(id, x);
+			if (was !== undefined && was !== x) {
+				el.animate([{translate: `${was - x}px 0`}, {translate: '0 0'}], {duration: 300, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)'});
+			}
+		});
+		tileX.current = next;
+	}, [apps]);
+
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			// typing the server address: the field (and the TV's keyboard) get the keys; Down leaves it
@@ -485,6 +579,14 @@ export default function App () {
 				return;
 			}
 			const n = nav.current;
+			if (movingRef.current) {
+				e.preventDefault();
+				if (e.key === 'ArrowLeft') moveTo(n.col - 1);
+				else if (e.key === 'ArrowRight') moveTo(n.col + 1);
+				else if (e.key === 'Enter' && !e.repeat) place(true);
+				else if (e.keyCode === 461 || e.key === 'GoBack' || e.key === 'Escape' || e.key === 'Backspace') { e.stopPropagation(); place(false); }
+				return;
+			}
 			if (e.key === 'ArrowUp' && n.row === 1 && !n.hasWatch && serverInput.current) { e.preventDefault(); serverInput.current.focus(); return; }
 			const rowLen = n.row === 0 ? n.count : n.apps.length;
 			switch (e.key) {
@@ -501,14 +603,21 @@ export default function App () {
 				case 'Enter':
 					e.preventDefault();
 					if (e.repeat) return;
-					activate(n.row, n.col);
+					if (n.row === 1) pressStart(n.col, false);   // apps open on release, a long press picks the tile up
+					else activate(n.row, n.col);
 					break;
 				default: break;   // Back etc. fall through to webOS
 			}
 		};
+		const onKeyUp = (e: KeyboardEvent) => {
+			if (e.key !== 'Enter' || document.activeElement === serverInput.current) return;
+			const n = nav.current;
+			if (pressEnd() && n.row === 1) activate(1, n.col);
+		};
 		window.addEventListener('keydown', onKey);
-		return () => window.removeEventListener('keydown', onKey);
-	}, [submitServer]);
+		window.addEventListener('keyup', onKeyUp);
+		return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
+	}, [submitServer, moveTo, place, pressStart, pressEnd]);
 
 	// Hero follows the focused continue-watching card; it stays put while you browse apps.
 	useEffect(() => { if (row === 0) setHeroIdx(col); }, [row, col]);
@@ -620,16 +729,25 @@ export default function App () {
 			) : null}
 
 			<section className="block apps">
-				<div className="label">Apps</div>
+				<div className="label">Apps{moving ? <span className="hint">◀ ▶ move · OK place · Back cancel</span> : null}</div>
 				{/* 9 tiles fill the row; with extra HDMI tiles they narrow so Settings stays on screen */}
-				<div className="approw" style={apps.length > 9 ? {['--tile-w' as string]: `${Math.floor((1920 - 2 * 96 - 16 * (apps.length - 1)) / apps.length)}px`} : undefined}>
+				<div className={'approw' + (moving ? ' sorting' : '')} style={apps.length > 9 ? {['--tile-w' as string]: `${Math.floor((1920 - 2 * 96 - 16 * (apps.length - 1)) / apps.length)}px`} : undefined}>
 					{apps.map((a, i) => (
-						<div key={a.id} className={'card app' + (row === 1 && col === i ? ' on' : '') + (a.dim ? ' dim' : '')}
-							onMouseMove={(e) => hover(1, i, e)} onClick={() => { setRow(1); setCol(i); activate(1, i); }}>
+						<div key={a.id} className={'card app' + (row === 1 && col === i ? ' on' : '') + (a.dim ? ' dim' : '') + (moving === a.id ? ' moving' : '')}
+							ref={(el) => { if (el) tileEls.current.set(a.id, el); else tileEls.current.delete(a.id); }}
+							onMouseMove={(e) => hover(1, i, e)}
+							onMouseDown={(e) => { if (e.button === 0) pressStart(i, true); }}
+							onClick={() => {
+								if (press.current.fired) { press.current.fired = false; return; }   // the long press that picked it up
+								if (movingRef.current) { place(true); return; }
+								setRow(1); setCol(i); activate(1, i);
+							}}>
 							<AppIcon app={a} />
 							<div className="app-title">{a.title}</div>
 							{a.sub ? <div className="app-sub">{a.sub}</div> : null}
 							<div className="ring" />
+							{moving === a.id && i > 0 ? <i className="nudge l" /> : null}
+							{moving === a.id && i < apps.length - 1 ? <i className="nudge r" /> : null}
 						</div>
 					))}
 				</div>

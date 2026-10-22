@@ -23,6 +23,15 @@ var HOME_CODE = 773;          // HOME on this TV's Magic Remote
 var EV_KEY = 1;
 var EVENT_SIZE = 16;          // 32-bit input_event
 var LOG = '/tmp/home-svc.log';
+// every key press from a remote, with the time it happened (kernel event time), to compare with when the launcher page
+// got it (window.__keyLog) - for "the remote takes long to react" reports. Small: kept under ~100 KB.
+var KEYLOG = '/tmp/home-keys.log';
+function logKey(code, id, evMs) {
+	try {
+		if (fs.existsSync(KEYLOG) && fs.statSync(KEYLOG).size > 100000) fs.renameSync(KEYLOG, KEYLOG + '.1');
+		fs.appendFileSync(KEYLOG, evMs + ' key ' + code + ' ' + id + ' seen+' + (Date.now() - evMs) + 'ms fg=' + (fgApp || 'none') + ' power=' + (powerState || '?') + '\n');
+	} catch (e) { /* ignore */ }
+}
 var ARGS = process.argv.slice(2);
 
 // each line carries wall-clock ms and seconds since kernel boot (boot timing; the wall clock
@@ -79,7 +88,7 @@ function bounceHome() {
 // LG Home (and we then bounce it). If still nothing is in front after NONE_GRACE_MS, bring our launcher up first so the
 // system's timer finds a fullscreen app already there. Short enough to beat that timer, long enough not to fight a real
 // app / input switch (which reaches the foreground well within this window). Shares the loop guard with bounceHome.
-var NONE_GRACE_MS = 600;
+var NONE_GRACE_MS = 350;   // was 600: every ms here is a remote press that goes nowhere (measured 2026-10-22)
 var noneTimer = null;
 var powerState = '';   // last tvpower state (Active / Screen Saver / Active Standby / Suspend ...), '' until the first push
 function noneForeground(isNone) {
@@ -233,6 +242,12 @@ function watchPower() {
 		var st = (p.state || '') + (p.processing ? ' / ' + p.processing : '') + (p.reason ? ' (' + p.reason + ')' : '');
 		if (p.state) powerState = p.state;
 		if (st && st !== last) { last = st; log('power: ' + st); }
+		// Switching on from standby / deep sleep: LG closed every app when it went off, and its own relaunch of the launcher
+		// comes ~1.4 s after the screen is on - remote presses until then reach no app. Launch at once instead (a second
+		// launch from LG or wakeRelaunch then just finds it running). Not for Screen Off -> on: the launcher is still there.
+		// (A device that switched the TV on over HDMI-CEC wants its input in front: left to LG.)
+		if (p.processing === 'Screen On' && p.state !== 'Screen Off' && !/cec|hdmi/i.test(p.reason || '') &&
+			(fgApp === '' || fgApp === STOCK_HOME)) launchMain('power-on');
 	});
 }
 
@@ -391,6 +406,9 @@ function readLoop(dev, id) {
 				return;
 			}
 			for (var off = 0; off + EVENT_SIZE <= bytes; off += EVENT_SIZE) {
+				if (buf.readUInt16LE(off + 8) === EV_KEY && buf.readInt32LE(off + 12) === 1) {
+					logKey(buf.readUInt16LE(off + 10), id, buf.readUInt32LE(off) * 1000 + Math.round(buf.readUInt32LE(off + 4) / 1000));
+				}
 				if (buf.readUInt16LE(off + 8) === EV_KEY && buf.readUInt16LE(off + 10) === HOME_CODE) {
 					var value = buf.readInt32LE(off + 12);
 					if (value === 1) { log('HOME down (' + id + ')'); scheduleHome(900); }
@@ -454,12 +472,14 @@ if (ARGS.indexOf('--watch') !== -1) { watchAll(); watchForeground(); watchPower(
 // right after switching on is never pulled back to the launcher (LG Home itself is handled by bounceHome).
 function wakeRelaunch () {
 	var tries = 0;
-	var iv = setInterval(function () {
+	var attempt = function () {
 		if (fgLive && fgApp !== '' && fgApp !== STOCK_HOME) { log('wake: ' + fgApp + ' in front - no more relaunches'); clearInterval(iv); return; }
 		tries++;
 		service.call('luna://com.webos.applicationManager/launch', { id: APP_ID }, function (m) { log('wake launch ' + tries + ': ' + JSON.stringify(m && m.payload)); });
-		if (tries >= 4) clearInterval(iv);   // fire at 1.5 / 3 / 4.5 / 6s after wake at most
-	}, 1500);
+		if (tries >= 4) clearInterval(iv);   // fire at once, then 1.5 / 3 / 4.5 s after wake at most
+	};
+	var iv = setInterval(attempt, 1500);
+	attempt();
 }
 var lastBeat = Date.now();
 setInterval(function () {

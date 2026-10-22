@@ -1,6 +1,6 @@
 {
   "id": "tld.my.minimalhome",
-  "version": "0.4.2",
+  "version": "0.4.7",
   "vendor": "me",
   "type": "web",
   "main": "index.html",
@@ -9,6 +9,7 @@
   "largeIcon": "largeIcon.png",
   "iconColor": "#050505",
   "bgColor": "#000000",
+  "splashBackground": "splash.png",
   "uiRevision": 2,
   "resolution": "1920x1080",
   "disableBackHistoryAPI": true,

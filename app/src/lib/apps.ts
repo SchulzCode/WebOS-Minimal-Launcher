@@ -19,6 +19,7 @@ export const APPS: AppDef[] = [
 	{id: 'tld.my.jfnative', title: 'Jellyfin', icon: 'icons/jfnative.png'},
 	{id: 'youtube.leanback.v4', title: 'YouTube', glyph: 'youtube'},
 	{id: 'twitch.adamffdev.v1', title: 'Twitch', icon: 'icons/twitch.jpg'},
+	{id: 'com.limelight.webos', title: 'Moonlight', icon: 'icons/moonlight.png'},
 	{id: 'spotify-beehive', title: 'Spotify', glyph: 'spotify'},
 	{id: 'netflix', title: 'Netflix', icon: 'icons/netflix.png'},
 	{id: 'org.webosbrew.hbchannel', title: 'Homebrew', icon: 'icons/homebrew.png'},
