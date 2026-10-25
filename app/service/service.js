@@ -199,16 +199,34 @@ var guardLogged = false;
 // front keep that setting (and general.lastInputApp, used by Back/closing policies) pointing at it, so the next boot starts
 // straight on the launcher (~19 s sooner, no HDMI picture). Opening an HDMI/TV app overwrites it; it is restored when we are
 // back in front - and powering off WHILE on an HDMI input deliberately still boots back to that input.
+// COLD-BOOT SPLASH: at a cold boot LG's web runtime holds the launcher's page back for ~10 s (black screen). The native
+// splash app (bootsplash/) draws at once and starts the launcher itself, so while it is installed the BOOT app
+// (physicalLastInputApp) points at it; lastInputApp stays on the launcher. Not installed (or removed later): straight to
+// the launcher as before. Checked at start and with the home-guard.
+var SPLASH_ID = 'tld.my.bootsplash';
+var bootAppId = null;   // unknown until checkSplash answers - the boot setting isn't touched before that
+function checkSplash() {
+	lunaOnce('luna://com.webos.applicationManager/getAppInfo', { id: SPLASH_ID }, function (err, out) {
+		if (!out || typeof out.returnValue !== 'boolean') { if (bootAppId === null) setTimeout(checkSplash, 10000); return; }   // inconclusive: keep what we have
+		var id = out.returnValue === true ? SPLASH_ID : APP_ID;
+		if (id === bootAppId) return;
+		log('boot app -> ' + id);
+		bootAppId = id;
+		lastInputCheckedAt = 0;
+		if (fgApp === APP_ID) keepLastInputApp();
+	});
+}
 var lastInputCheckedAt = 0;
 function keepLastInputApp() {
+	if (bootAppId === null) return;   // checkSplash calls back once it knows
 	var now = Date.now();
 	if (now - lastInputCheckedAt < 3000) return;
 	lastInputCheckedAt = now;
 	lunaOnce('luna://com.webos.settingsservice/getSystemSettings', { category: 'general', keys: ['lastInputApp', 'physicalLastInputApp'] }, function (e, cur) {
 		var st = cur && cur.settings;
-		if (!st || (st.lastInputApp === APP_ID && st.physicalLastInputApp === APP_ID)) return;
-		lunaOnce('luna://com.webos.settingsservice/setSystemSettings', { category: 'general', settings: { lastInputApp: APP_ID, physicalLastInputApp: APP_ID } }, function (e2, r) {
-			log('lastInputApp ' + st.lastInputApp + ' / physicalLastInputApp ' + st.physicalLastInputApp + ' -> ' + APP_ID + ': ' + JSON.stringify(r));
+		if (!st || (st.lastInputApp === APP_ID && st.physicalLastInputApp === bootAppId)) return;
+		lunaOnce('luna://com.webos.settingsservice/setSystemSettings', { category: 'general', settings: { lastInputApp: APP_ID, physicalLastInputApp: bootAppId } }, function (e2, r) {
+			log('lastInputApp ' + st.lastInputApp + ' / physicalLastInputApp ' + st.physicalLastInputApp + ' -> ' + APP_ID + ' / ' + bootAppId + ': ' + JSON.stringify(r));
 		});
 	});
 }
@@ -233,6 +251,8 @@ function guardHomeDefault() {
 }
 setTimeout(guardHomeDefault, 45000);
 setInterval(guardHomeDefault, 10 * 60 * 1000);
+setTimeout(checkSplash, 5000);
+setInterval(checkSplash, 10 * 60 * 1000);
 
 // Diagnostics for boot/wake timing: log TV power-state transitions.
 function watchPower() {
@@ -361,7 +381,8 @@ function launchApp(reason) {
 // the launch (returnValue:true), or give up after ~60s.
 function bootLaunch(attempt) {
 	attempt = attempt || 1;
-	service.call('luna://com.webos.applicationManager/launch', { id: APP_ID }, function (m) {
+	// noSplash like the boot manager: LG's launch screen would otherwise cover the boot splash app (bootsplash/) until the page paints
+	service.call('luna://com.webos.applicationManager/launch', { id: APP_ID, noSplash: true }, function (m) {
 		var ok = m && m.payload && m.payload.returnValue === true;
 		log('bootLaunch #' + attempt + ': ' + JSON.stringify(m && m.payload));
 		if (!ok && attempt === 8) { log('bootLaunch: main launcher still refused after 8 tries — launching fallback ' + FALLBACK_ID); launchId(FALLBACK_ID, 'boot fallback'); }

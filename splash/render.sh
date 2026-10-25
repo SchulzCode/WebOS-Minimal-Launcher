@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Render the launch splashes (1920x1080 PNG) for every app in splash.html's APPS list into splash/out/.
 # Needs Firefox and the launcher's node_modules (Inter font). Then copy them where they belong:
-#   minimalhome -> app/public/splash.png     jfnative -> webos-jellyfin-native/pkg/splash.png
+#   minimalhome -> app/public/splash.png     bootsplash -> bootsplash/splash.png (bootsplash/build.sh does it)
+#   jfnative -> webos-jellyfin-native/pkg/splash.png
 #   youtube / twitch / moonlight / homebrew  -> the file named by splashBackground in that app's appinfo.json
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"

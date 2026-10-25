@@ -1,0 +1,17 @@
+{
+  "id": "tld.my.bootsplash",
+  "version": "0.2.0",
+  "vendor": "me",
+  "type": "native",
+  "main": "bootsplash",
+  "title": "Minimal Home Boot Splash",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#050505",
+  "bgColor": "#07080c",
+  "splashBackground": "splash.png",
+  "nativeLifeCycleInterfaceVersion": 2,
+  "handlesRelaunch": false,
+  "visible": false,
+  "requiredMemory": 40
+}
