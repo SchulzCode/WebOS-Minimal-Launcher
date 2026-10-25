@@ -47,9 +47,10 @@ row, the media storage panel and (if you allow it) deleting.
 | `GET /manage/item`, `POST /manage/delete` | only with `ALLOW_DELETE=1`: what deleting a film or a whole series would remove, and the delete itself |
 | `GET /health` | `ok` |
 
-Sonarr and Radarr only ask the download client for news about once a minute, so the feed estimates progress and time
-left for the moment it is asked; the launcher asks every 20 s while something downloads (otherwise every 10 minutes)
-and counts down in between.
+Sonarr and Radarr only ask the download client for news about once a minute (and have no numbers at all right after a
+grab), so with qBittorrent the feed reads progress, speed and time left straight from it; otherwise it estimates them
+from Sonarr's/Radarr's last numbers. A download that has just started shows as "starting" instead of a frozen 0 %. The
+launcher asks every 20 s while something downloads (otherwise every 2 minutes) and counts down in between.
 
 **Setup**: fill in the `SERVER_*`, `FEED_BIND` and `ARR_NETWORK` lines in `config.env`, then run
 `server/launcher-feed/deploy.sh` (or `scripts/rebuild-all.sh --with-feed`). It copies the service to the server, reads
@@ -57,7 +58,9 @@ the Sonarr/Radarr API keys there from their own `config.xml` straight into `feed
 starts the container, bound to the server's LAN address only. Then point the launcher at it with `VITE_FEED_URL`
 (see [Install](#install)); Jellyfin Native finds it by itself on the Jellyfin server's host, port 8091.
 If Sonarr/Radarr aren't reachable as `http://sonarr:8989` / `http://radarr:7878` on that network, add `SONARR_URL` /
-`RADARR_URL` to `feed.env`.
+`RADARR_URL` to `feed.env`. When Sonarr uses qBittorrent, the deploy also copies its qBittorrent address and sign-in
+from Sonarr's settings into `feed.env` (`QBIT_URL`, `QBIT_USER`, `QBIT_PASS`; never printed) - delete those lines to
+go without.
 
 **Deleting from the TV** (off by default): `FEED_ALLOW_DELETE=1` in `config.env`, then deploy again. Jellyfin Native
 then shows a delete button on films and series. The service deletes through Sonarr/Radarr (files included, and they
@@ -145,7 +148,8 @@ Optional (`--with-no-voice`): a boot hook that switches off voice input, so the 
   installed app ids, turn the panel off while the launcher is in front, report Jellyfin Native's server address - never
   its token). No shell is ever involved.
 - The Jellyfin access token lives in the launcher's own storage on the TV; no password is entered or stored.
-- The feed service holds the Sonarr/Radarr keys on the server; the TV never sees them. It listens only on the server's
+- The feed service holds the Sonarr/Radarr keys (and the qBittorrent sign-in, which qBittorrent can't limit to
+  reading - the feed only ever reads the torrent list) on the server; the TV never sees them. It listens only on the server's
   LAN address, runs as a non-root user in a read-only container without capabilities, and answers only GET requests -
   except the optional delete, which needs a Jellyfin administrator's sign-in. That sign-in travels over plain HTTP on
   your LAN (like the rest of the feed), so only switch deleting on in a network you trust.

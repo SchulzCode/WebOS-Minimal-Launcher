@@ -26,6 +26,21 @@ if [ ! -s feed.env ]; then
 	printf 'SONARR_KEY=%s\nRADARR_KEY=%s\n' "$S" "$R" > feed.env
 	echo "feed.env created (keys: sonarr ${#S} chars, radarr ${#R} chars - not shown)"
 fi
+# live download numbers straight from qBittorrent: its address and sign-in are copied from Sonarr's own download client
+# settings (read-only from sonarr.db), never printed. Skipped when Sonarr has no qBittorrent client or feed.env has them.
+if ! grep -q '^QBIT_URL=' feed.env; then
+	DB="$(docker inspect sonarr -f '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}')/sonarr.db"
+	python3 - "$DB" >> feed.env <<'PY' && echo "qBittorrent sign-in added to feed.env (not shown)" || echo "no qBittorrent client in Sonarr - downloads keep Sonarr's numbers"
+import json, sqlite3, sys
+db = sqlite3.connect("file:%s?mode=ro" % sys.argv[1], uri=True)
+for (s,) in db.execute("SELECT Settings FROM DownloadClients WHERE Implementation = 'QBittorrent' AND Enable = 1"):
+    c = json.loads(s)
+    print("QBIT_URL=%s://%s:%d%s" % ("https" if c.get("useSsl") else "http", c["host"], c["port"], (c.get("urlBase") or "").rstrip("/")))
+    print("QBIT_USER=%s\nQBIT_PASS=%s" % (c.get("username", ""), c.get("password", "")))
+    sys.exit(0)
+sys.exit(1)
+PY
+fi
 # the optional delete for Jellyfin Native (FEED_ALLOW_DELETE=1 in config.env; admins only, see feed.py)
 grep -v '^ALLOW_DELETE=' feed.env > feed.env.new || true
 echo "ALLOW_DELETE=$FEED_ALLOW_DELETE" >> feed.env.new

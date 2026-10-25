@@ -22,12 +22,15 @@ Both need the caller's own Jellyfin sign-in (the "Authorization: MediaBrowser ..
 it is checked with Jellyfin and must belong to an administrator. Every delete is logged to the container log.
 
 Downloads: one entry per download (a season pack is one entry, not one per episode). Sonarr/Radarr only ask the download
-client for news about once a minute, so "progress" is estimated for the moment of the request from their last numbers and
-the expected finish time, and "eta" is the seconds left from now - clients can count down between requests without
-showing frozen numbers.
+client for news about once a minute (and right after a grab they don't have any numbers yet), so with QBIT_URL/QBIT_USER/
+QBIT_PASS set the feed reads progress, speed and time left straight from qBittorrent (matched by the torrent hash, which
+is Sonarr's/Radarr's downloadId). Without it, "progress" is estimated for the moment of the request from their last
+numbers and the expected finish time. "eta" is the seconds left from now (null = no estimate yet, e.g. a download that is
+just starting) - clients can count down between requests without showing frozen numbers.
 
-Apart from that optional delete, only GET requests are accepted and only GET requests are made upstream. Standard library only. Responses are cached for
-CACHE_SECONDS so the TV (or anything else on the LAN) cannot hammer Sonarr/Radarr.
+Apart from that optional delete, only GET requests are accepted, and only GET requests are made upstream (plus the
+qBittorrent sign-in, a POST; the feed only ever reads the torrent list). Standard library only. Responses are cached for
+CACHE_SECONDS so the TV (or anything else on the LAN) cannot hammer Sonarr/Radarr/qBittorrent.
 """
 import json
 import os
@@ -46,12 +49,17 @@ SONARR_KEY = os.environ.get("SONARR_KEY", "")
 RADARR_KEY = os.environ.get("RADARR_KEY", "")
 JELLYFIN_URL = os.environ.get("JELLYFIN_URL", "http://jellyfin:8096").rstrip("/")
 ALLOW_DELETE = os.environ.get("ALLOW_DELETE", "0") == "1"
+QBIT_URL = os.environ.get("QBIT_URL", "").rstrip("/")
+QBIT_USER = os.environ.get("QBIT_USER", "")
+QBIT_PASS = os.environ.get("QBIT_PASS", "")
 PORT = int(os.environ.get("PORT", "8091"))
 DAYS = int(os.environ.get("DAYS", "7"))
 CACHE_SECONDS = int(os.environ.get("CACHE_SECONDS", "10"))
 MAX_UPCOMING, MAX_DOWNLOADING = 8, 6
 # how far past Sonarr's/Radarr's last look at the download client the progress may be extrapolated (they look every ~60 s)
 MAX_EXTRAPOLATE = 120
+# a torrent without peers yet in its first minutes is starting, not stalled
+STARTING_SECONDS = 180
 
 _cache = {"at": 0.0, "body": b"{}"}
 _lock = threading.Lock()
@@ -109,6 +117,74 @@ def state_of(q):
     return "downloading"
 
 
+# ---- qBittorrent (optional): live numbers for the downloads ----
+_qb = {"sid": "", "failed_at": 0.0}             # sid = the session cookie, "name=value"
+_qb_lock = threading.Lock()
+
+
+def qb_login():
+    """Sign in once and keep the session; after a failure wait a minute (qBittorrent bans IPs after repeated failures)."""
+    if time.time() - _qb["failed_at"] < 60:
+        return False
+    body = urllib.parse.urlencode({"username": QBIT_USER, "password": QBIT_PASS}).encode()
+    req = urllib.request.Request(QBIT_URL + "/api/v2/auth/login", data=body, method="POST",
+                                 headers={"Referer": QBIT_URL, "Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=6) as r:
+            # the session cookie: "SID" up to qBittorrent 4, "QBT_SID_<port>" (and an empty 204 answer) since 5
+            m = re.search(r"((?:QBT_)?SID(?:_\d+)?=[^;]+)", r.headers.get("Set-Cookie", ""))
+            if m and (r.status == 204 or r.read().strip() == b"Ok."):
+                _qb["sid"] = m.group(1)
+                return True
+    except Exception:
+        pass
+    _qb["sid"], _qb["failed_at"] = "", time.time()
+    return False
+
+
+def qb_torrents(hashes):
+    """{lower-case hash: torrent} for these hashes, {} when qBittorrent isn't set up or doesn't answer."""
+    if not (QBIT_URL and QBIT_USER and hashes):
+        return {}
+    url = QBIT_URL + "/api/v2/torrents/info?" + urllib.parse.urlencode({"hashes": "|".join(sorted(hashes))})
+    with _qb_lock:
+        for _ in range(2):                          # once more after signing in again (the session expired)
+            if not _qb["sid"] and not qb_login():
+                return {}
+            req = urllib.request.Request(url, headers={"Cookie": _qb["sid"], "Referer": QBIT_URL})
+            try:
+                with urllib.request.urlopen(req, timeout=6) as r:
+                    return {t.get("hash", "").lower(): t for t in json.load(r)}
+            except urllib.error.HTTPError as e:
+                if e.code != 403:
+                    return {}
+                _qb["sid"] = ""
+            except Exception:
+                return {}
+    return {}
+
+
+def qb_live(t, now):
+    """(state, progress, eta) from a qBittorrent torrent, or None to keep Sonarr's/Radarr's view."""
+    st, progress = t.get("state", ""), float(t.get("progress") or 0)
+    speed, eta = t.get("dlspeed") or 0, t.get("eta")
+    eta = int(eta) if speed > 0 and isinstance(eta, int) and 0 <= eta < 8640000 else None   # 8640000 = qBittorrent's "infinite"
+    young = now.timestamp() - (t.get("added_on") or 0) < STARTING_SECONDS
+    if progress >= 1 or st in ("uploading", "stalledUP", "queuedUP", "forcedUP", "pausedUP", "stoppedUP", "checkingUP"):
+        return "importing", 1.0, 0                  # downloaded; Sonarr/Radarr pick it up within a minute
+    if st in ("downloading", "forcedDL"):
+        return "downloading", progress, eta
+    if st in ("metaDL", "forcedMetaDL", "allocating", "checkingDL", "checkingResumeData", "moving") or (st == "stalledDL" and young):
+        return "downloading", progress, None        # starting: no numbers yet
+    if st == "stalledDL":
+        return "stalled", progress, None
+    if st == "queuedDL":
+        return "queued", progress, None
+    if st in ("pausedDL", "stoppedDL"):
+        return "paused", progress, None
+    return None                                     # error, missingFiles, unknown: Sonarr's/Radarr's message says more
+
+
 def build():
     now = datetime.now(timezone.utc)
     start, end = now - timedelta(hours=3), now + timedelta(days=DAYS)
@@ -144,6 +220,7 @@ def build():
         groups = {}                                 # downloadId -> records (a season pack is many records, one download)
         for q in api(base, key, "queue", page=1, pageSize=250, **extra).get("records", []):   # a season pack is one record per episode
             groups.setdefault(q.get("downloadId") or str(q.get("id")), []).append(q)
+        torrents = qb_torrents({did.lower() for did in groups if re.fullmatch(r"[0-9a-fA-F]{40}", did)})   # torrent hashes
         for did, recs in groups.items():
             q = recs[0]
             size, left = q.get("size") or 0, q.get("sizeleft") or 0
@@ -151,7 +228,12 @@ def build():
             state = state_of(q)
             secs, done_at = span_seconds(q.get("timeleft", "")), parse_utc(q.get("estimatedCompletionTime") or "")
             eta = None
-            if state == "downloading" and secs and done_at:
+            t = torrents.get(did.lower())
+            live = qb_live(t, now) if t and state in ("downloading", "queued", "stalled", "warning", "paused") else None
+            if live:                                # qBittorrent's own numbers, as of now
+                state, progress, eta = live
+                size = t.get("size") or size
+            elif state == "downloading" and secs and done_at:
                 # Sonarr/Radarr computed timeleft when they last asked the download client: done_at - timeleft is that
                 # moment. Carry the progress forward at the same rate to now (bounded), and give the time left from now.
                 looked = done_at - timedelta(seconds=secs)
@@ -413,5 +495,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("launcher-feed on :%d (sonarr %s, radarr %s, delete %s)" % (PORT, "yes" if SONARR_KEY else "no", "yes" if RADARR_KEY else "no", "on" if ALLOW_DELETE else "off"), flush=True)
+    print("launcher-feed on :%d (sonarr %s, radarr %s, qbittorrent %s, delete %s)" % (PORT, "yes" if SONARR_KEY else "no", "yes" if RADARR_KEY else "no",
+          "yes" if QBIT_URL and QBIT_USER else "no", "on" if ALLOW_DELETE else "off"), flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

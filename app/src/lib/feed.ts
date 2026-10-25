@@ -72,6 +72,8 @@ export function feedLines (feed: Feed | null, now: Date = new Date()): Line[] {
 		if (d.state === 'blocked' || d.state === 'failed') { out.push({tag: 'Download problem', text: `${name} · ${d.state === 'blocked' ? 'not imported - check Sonarr/Radarr' : 'failed'}`}); continue; }
 		if (d.state ? !['downloading', 'queued', 'paused', 'stalled', 'warning'].includes(d.state) : d.progress >= 0.999 || /completed|import/i.test(d.status)) continue;   // finished, being imported: not interesting
 		if (d.state === 'queued') { out.push({tag: 'Downloading', text: `${name} · queued`}); continue; }
+		// just grabbed: no numbers yet (the torrent is still fetching its file list / finding peers) - not a frozen 0 %
+		if (d.state === 'downloading' && d.eta === null && d.progress < 0.005) { out.push({tag: 'Downloading', text: `${name} · starting`}); continue; }
 		const {progress, left} = liveDownload(d, feed.at);
 		const pct = `${Math.floor(progress * 100)}%`;
 		const rest = d.state === 'warning' ? 'needs a look in Sonarr/Radarr' : d.state && d.state !== 'downloading' ? d.state

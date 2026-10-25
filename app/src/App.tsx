@@ -400,7 +400,8 @@ export default function App () {
 	// --- coming up / downloading strip ----------------------------------------------------
 	// Data comes from the read-only feed service on the server (Sonarr + Radarr summary). Refreshed when the launcher is
 	// shown again, every 20 s while something is downloading (once a minute behind the idle screen), otherwise every
-	// 10 minutes; between requests the strip counts down by itself (feedLines). Any failure simply hides the strip.
+	// 2 minutes so a new download shows up soon (the feed answers from a 10 s cache); between requests the strip counts
+	// down by itself (feedLines). Any failure simply hides the strip.
 	useEffect(() => {
 		const mock = import.meta.env.DEV ? window.__MOCK__?.feed : undefined;
 		if (mock) { setFeed({...mock, at: Date.now()}); return; }
@@ -408,7 +409,7 @@ export default function App () {
 		let last = 0, timer = 0, active = false, alive = true;
 		const schedule = () => {
 			window.clearTimeout(timer);
-			timer = window.setTimeout(refresh, active ? (idleRef.current ? 60_000 : 20_000) : 10 * 60_000);
+			timer = window.setTimeout(refresh, active ? (idleRef.current ? 60_000 : 20_000) : 2 * 60_000);
 		};
 		const refresh = () => {
 			if (document.hidden || Date.now() - last < 15_000) { schedule(); return; }
